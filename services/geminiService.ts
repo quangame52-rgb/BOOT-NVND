@@ -1,15 +1,19 @@
-
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { GeminiBot } from "../types";
 
 export const generateBotResponse = async (
   bot: GeminiBot,
   prompt: string,
-  images: string[] = [] // Mảng các chuỗi base64
+  images: string[] = [], // Mảng các chuỗi base64
+  apiKey: string // Bắt buộc truyền API Key từ phía người dùng
 ): Promise<{ text: string; sources?: any[] }> => {
   try {
-    // Fix: Adhere to Google GenAI guidelines for API key initialization by using process.env.API_KEY directly
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    if (!apiKey) {
+      throw new Error("Chưa có API Key. Vui lòng đăng nhập/nhập Key.");
+    }
+
+    // Initialize with the user provided key
+    const ai = new GoogleGenAI({ apiKey });
     
     const parts: any[] = [{ text: prompt }];
     
@@ -26,7 +30,7 @@ export const generateBotResponse = async (
     });
 
     const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // Model Pro hỗ trợ thị giác máy tính cực tốt
+      model: bot.model || 'gemini-2.5-flash', // Sử dụng model từ config bot hoặc default
       contents: { parts },
       config: {
         systemInstruction: bot.systemInstruction || "Bạn là một trợ lý hữu ích.",
@@ -40,6 +44,7 @@ export const generateBotResponse = async (
     return { text, sources };
   } catch (error: any) {
     console.error(`Error for bot ${bot.name}:`, error);
+    // Return clean error message
     throw new Error(error.message || "Lỗi kết nối API.");
   }
 };
