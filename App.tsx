@@ -4,7 +4,8 @@ import {
   Plus, Send, RefreshCw, Trash2, Settings2, Bot, 
   X, Zap, Cpu, ArrowLeft, RotateCcw,
   CloudDownload, Save, CheckCircle2, Home, ArrowRight, Eye, AlertCircle,
-  User, Crown, ShieldAlert, Power, Image as ImageIcon, Link as LinkIcon, Terminal
+  User, Crown, ShieldAlert, Power, Image as ImageIcon, Link as LinkIcon, Terminal,
+  MessageSquare, ExternalLink
 } from 'lucide-react';
 import { GeminiBot, HistoryItem, BotResponse } from './types';
 import { generateBotResponse } from './services/geminiService';
@@ -389,12 +390,21 @@ export default function App() {
                     ) : ( <div className={`w-full h-full ${bot.color} opacity-20`}></div> )}
                     <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
                   </div>
-                  {!isLocked && (
-                    <div className="absolute top-2 right-2 z-[60] flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={(e) => { e.stopPropagation(); setEditingBot(bot); setShowConfig(true); }} className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg"><Settings2 className="w-4 h-4" /></button>
-                      <button onClick={(e) => deleteBot(e, bot)} className="p-2 bg-red-600 rounded-lg text-white shadow-lg"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  )}
+                  
+                  <div className="absolute top-2 right-2 z-[60] flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {bot.gemLink && (
+                        <a href={bot.gemLink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-2 bg-emerald-600 rounded-lg text-white shadow-lg hover:bg-emerald-500 transition-colors" title="Mở Bot Gemini">
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                    )}
+                    {!isLocked && (
+                      <>
+                        <button onClick={(e) => { e.stopPropagation(); setEditingBot(bot); setShowConfig(true); }} className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg"><Settings2 className="w-4 h-4" /></button>
+                        <button onClick={(e) => deleteBot(e, bot)} className="p-2 bg-red-600 rounded-lg text-white shadow-lg"><Trash2 className="w-4 h-4" /></button>
+                      </>
+                    )}
+                  </div>
+
                   <div className="absolute inset-0 flex flex-col items-center justify-center p-4 pb-12 z-10">
                     <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-slate-800 border-2 border-white/10 group-hover:border-indigo-500/40 transition-all overflow-hidden shadow-2xl">
                       {bot.imageUrl ? <img src={formatImageUrl(bot.imageUrl)} onError={handleImageError} className="w-full h-full object-cover" alt="Bot" /> : <Bot className="w-10 h-10 text-white/50 m-auto mt-5 md:mt-7" />}
@@ -510,7 +520,7 @@ export default function App() {
           <div className="glass-card rounded-2xl p-2.5 flex items-end gap-2.5 shadow-2xl border-white/10 bg-slate-900/95">
              <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
              <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all shrink-0"><ImageIcon className="w-5.5 h-5.5" /></button>
-             <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleRunCommand())} disabled={userRole === 'USER' && usageCount >= 3} placeholder={userRole === 'USER' && usageCount >= 3 ? "HẾT LƯỢT DÙNG!" : `Hỏi ${activeBot.name}...`} className="flex-1 bg-transparent border-none focus:ring-0 py-2 px-3 text-white placeholder-slate-700 resize-none h-[45px] custom-scrollbar text-base font-bold" />
+             <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleRunCommand())} disabled={userRole === 'USER' && usageCount >= 3} placeholder={userRole === 'USER' && usageCount >= 3 ? "HẾT LƯỢT DÙNG!" : `Nhập lệnh cho ${activeBot.name}...`} className="flex-1 bg-transparent border-none focus:ring-0 py-2 px-3 text-white placeholder-slate-700 resize-none h-[45px] custom-scrollbar text-base font-bold" />
              <button onClick={handleRunCommand} disabled={isProcessing || (!userInput.trim() && selectedImages.length === 0) || (userRole === 'USER' && usageCount >= 3)} className={`p-3 rounded-xl transition-all shadow-lg ${isProcessing || (!userInput.trim() && selectedImages.length === 0) || (userRole === 'USER' && usageCount >= 3) ? 'bg-white/5 text-slate-800' : 'bg-indigo-600 text-white hover:scale-105 active:scale-95 shadow-indigo-600/20'}`}>
                {isProcessing ? <RefreshCw className="w-5.5 h-5.5 animate-spin" /> : <Send className="w-5.5 h-5.5" />}
              </button>
@@ -541,13 +551,31 @@ export default function App() {
                   </div>
                   <div className="space-y-1">
                      <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><LinkIcon className="w-3 h-3"/> Link Bot Gemini</label>
-                     <input name="gemLink" defaultValue={editingBot?.gemLink || ''} placeholder="Link chia sẻ bot..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-emerald-400 text-[10px] outline-none focus:border-emerald-500/50" />
+                     <input name="gemLink" defaultValue={editingBot?.gemLink || ''} placeholder="https://gemini.google.com/..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-emerald-400 text-[10px] outline-none focus:border-emerald-500/50" />
                   </div>
                </div>
 
                <div className="space-y-1">
-                  <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><Terminal className="w-3 h-3"/> Dòng lệnh / Kịch bản (System Instruction)</label>
-                  <textarea name="systemInstruction" defaultValue={editingBot?.systemInstruction || ''} required rows={5} placeholder="Nhập lệnh điều khiển hành vi của Bot tại đây..." className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-slate-300 text-xs resize-none outline-none focus:border-indigo-500/50 font-mono" />
+                  <label className="text-[9px] text-indigo-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><Terminal className="w-3 h-3"/> Dòng lệnh hệ thống (System Instruction)</label>
+                  <div className="relative">
+                    <textarea 
+                      name="systemInstruction" 
+                      defaultValue={editingBot?.systemInstruction || ''} 
+                      required 
+                      rows={8} 
+                      placeholder="> Nhập kịch bản hoạt động của bot..." 
+                      className="w-full bg-[#0f172a] border border-white/10 rounded-2xl p-5 text-emerald-400 text-xs resize-none outline-none focus:border-indigo-500/50 font-mono shadow-inner leading-relaxed" 
+                      spellCheck={false}
+                    />
+                    <div className="absolute bottom-3 right-4 pointer-events-none opacity-50">
+                        <span className="text-[9px] text-slate-500 font-mono">CMD MODE</span>
+                    </div>
+                  </div>
+               </div>
+
+               <div className="space-y-1">
+                  <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><MessageSquare className="w-3 h-3"/> Gợi ý cho người dùng (User Prompt)</label>
+                  <input name="userInstructions" defaultValue={editingBot?.userInstructions || ''} placeholder="VD: Hỏi về công dụng..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-slate-300 text-[10px] outline-none focus:border-indigo-500/50" />
                </div>
 
                <button type="submit" disabled={isSaving} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all shadow-xl">
