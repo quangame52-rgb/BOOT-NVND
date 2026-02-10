@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Gemini AI Hub - Command Center",
+  "description": "A powerful dashboard to manage and trigger multiple Gemini AI bots simultaneously. Input your commands and watch your custom-configured agents generate responses in real-time.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
