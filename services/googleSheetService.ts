@@ -11,12 +11,15 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyLFlygap5Kl1Fg
 export const fetchBotsFromGoogleSheet = async (): Promise<GeminiBot[]> => {
   try {
     const response = await fetch(READ_URL);
-    if (!response.ok) throw new Error("Không thể truy cập Google Sheet. Hãy kiểm tra quyền chia sẻ (Bất kỳ ai có liên kết đều có thể xem).");
+    if (!response.ok) throw new Error("Không thể truy cập Google Sheet.");
     
     const text = await response.text();
-    // Phân tích JSON từ phản hồi gviz
-    const jsonString = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
-    const json = JSON.parse(jsonString);
+    // Phân tích JSON từ phản hồi gviz chuẩn xác hơn bằng Regex
+    const jsonMatch = text.match(/google\.visualization\.Query\.setResponse\(([\s\S\w]+)\);/);
+    if (!jsonMatch || !jsonMatch[1]) {
+        throw new Error("Dữ liệu Sheet trả về không đúng định dạng.");
+    }
+    const json = JSON.parse(jsonMatch[1]);
     
     const rows = json.table.rows;
     if (!rows || rows.length <= 1) return []; // Bỏ qua header
@@ -29,13 +32,14 @@ export const fetchBotsFromGoogleSheet = async (): Promise<GeminiBot[]> => {
       const botName = cols[0]?.v?.toString().toUpperCase() || 'BOT CHƯA ĐẶT TÊN';
       const systemInstruction = cols[1]?.v?.toString() || '';
       const imageUrl = cols[4]?.v?.toString() || '';
+      const gemLink = cols[3]?.v?.toString() || '';
       
       return {
         id: `sheet-bot-${index}-${Date.now()}`, 
         name: botName,
         systemInstruction: systemInstruction,
-        userInstructions: cols[2]?.v?.toString() || 'Hỏi chuyên gia về dược liệu này.',
-        gemLink: cols[3]?.v?.toString() || '',
+        userInstructions: cols[2]?.v?.toString() || 'Hỏi chuyên gia về lĩnh vực này.',
+        gemLink: gemLink,
         imageUrl: imageUrl.startsWith('http') ? imageUrl : '',
         description: cols[2]?.v?.toString().substring(0, 100) || 'Dữ liệu từ hệ thống đám mây',
         model: 'gemini-3-pro-preview',
@@ -45,7 +49,8 @@ export const fetchBotsFromGoogleSheet = async (): Promise<GeminiBot[]> => {
     }).filter((bot: any) => bot !== null && bot.name && bot.systemInstruction);
   } catch (error) {
     console.error("Lỗi khi đồng bộ Google Sheet:", error);
-    throw error;
+    // Trả về mảng rỗng để UI xử lý, không throw lỗi chặn app
+    return [];
   }
 };
 

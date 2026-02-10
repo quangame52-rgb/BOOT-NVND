@@ -4,7 +4,7 @@ import {
   Plus, Send, RefreshCw, Trash2, Settings2, Bot, 
   X, Zap, Cpu, ArrowLeft, RotateCcw,
   CloudDownload, Save, CheckCircle2, Home, ArrowRight, Eye, AlertCircle,
-  User, Crown, ShieldAlert, Power, Image as ImageIcon
+  User, Crown, ShieldAlert, Power, Image as ImageIcon, Link as LinkIcon, Terminal
 } from 'lucide-react';
 import { GeminiBot, HistoryItem, BotResponse } from './types';
 import { generateBotResponse } from './services/geminiService';
@@ -84,6 +84,13 @@ export default function App() {
     localStorage.setItem('gemini_hub_role', userRole);
     localStorage.setItem('gemini_hub_usage', usageCount.toString());
   }, [bots, userRole, usageCount]);
+
+  // Tự động đồng bộ khi người dùng đăng nhập thành công
+  useEffect(() => {
+    if (userRole !== 'NONE') {
+      handleSyncSheet(true);
+    }
+  }, [userRole]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -194,26 +201,20 @@ export default function App() {
   };
 
   const handleSyncSheet = async (force: boolean = false) => {
-    if (isSyncing || isLocked) return;
+    if (isSyncing) return; // Allow sync even if locked to update data
     setIsSyncing(true);
     setSyncError(null);
     try {
       const sheetBots = await fetchBotsFromGoogleSheet();
       if (sheetBots && sheetBots.length > 0) {
-        if (force) setBots(sheetBots);
-        else {
-          setBots(prev => {
-            const existingNames = new Set(prev.map(b => b.name));
-            const newBots = sheetBots.filter(b => !existingNames.has(b.name));
-            return [...prev, ...newBots];
-          });
-        }
+        // Luôn ưu tiên dữ liệu từ Sheet
+        setBots(sheetBots);
         triggerSuccessToast();
       } else {
         setSyncError("Không tìm thấy dữ liệu bot trên Google Sheet.");
       }
     } catch (err) {
-      setSyncError("Lỗi kết nối hoặc Sheet chưa được công khai.");
+      setSyncError("Lỗi kết nối Server hoặc Sheet chưa công khai.");
     } finally {
       setIsSyncing(false);
     }
@@ -232,9 +233,10 @@ export default function App() {
     const rawName = (formData.get('name') as string || '').trim().toUpperCase();
     const rawImageUrl = (formData.get('imageUrl') as string || '').trim();
     const systemInstruction = (formData.get('systemInstruction') as string || '').trim();
+    const gemLink = (formData.get('gemLink') as string || '').trim();
     
     if (!rawName || !systemInstruction) {
-      alert("Vui lòng nhập đầy đủ Tên Bot và Kịch bản!");
+      alert("Vui lòng nhập Tên Bot và Dòng lệnh (System Instruction)!");
       setIsSaving(false);
       return;
     }
@@ -247,20 +249,24 @@ export default function App() {
       userInstructions: (formData.get('userInstructions') as string || '').trim(),
       color: (formData.get('color') as string || 'bg-indigo-600'),
       imageUrl: rawImageUrl,
-      gemLink: (formData.get('gemLink') as string || '').trim(),
+      gemLink: gemLink,
       model: 'gemini-3-pro-preview',
       isActive: true
     };
 
     try {
+      // Cập nhật local trước cho mượt
       if (editingBot) setBots(prev => prev.map(b => b.id === editingBot.id ? botData : b));
       else setBots(prev => [botData, ...prev]);
+      
+      // Gửi lên server
       await appendBotToSheet(botData);
+      
       setShowConfig(false);
       setEditingBot(null);
       triggerSuccessToast();
     } catch (err) {
-      setShowConfig(false);
+      alert("Lỗi khi lưu. Vui lòng thử lại.");
     } finally {
       setIsSaving(false);
     }
@@ -320,7 +326,7 @@ export default function App() {
         {showSuccessToast && (
           <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] bg-emerald-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-2 animate-in slide-in-from-top-4 duration-300">
             <CheckCircle2 className="w-5 h-5" />
-            <span className="font-bold uppercase text-[10px] tracking-widest">ĐÃ CẬP NHẬT</span>
+            <span className="font-bold uppercase text-[10px] tracking-widest">DỮ LIỆU ĐÃ ĐỒNG BỘ</span>
           </div>
         )}
 
@@ -348,11 +354,11 @@ export default function App() {
                  </div>
                )}
             </div>
-            {!isLocked && (
-              <button onClick={() => handleSyncSheet(false)} disabled={isSyncing} className="p-3 bg-emerald-600/10 border border-emerald-600/20 rounded-xl text-emerald-500 hover:bg-emerald-600/20 transition-all">
-                <CloudDownload className={`w-5 h-5 ${isSyncing ? 'animate-bounce' : ''}`} />
-              </button>
-            )}
+            
+            <button onClick={() => handleSyncSheet(true)} disabled={isSyncing} className="p-3 bg-emerald-600/10 border border-emerald-600/20 rounded-xl text-emerald-500 hover:bg-emerald-600/20 transition-all">
+              <CloudDownload className={`w-5 h-5 ${isSyncing ? 'animate-bounce' : ''}`} />
+            </button>
+            
             <button onClick={handleLogout} className="p-3 bg-rose-600 hover:bg-rose-500 rounded-xl text-white shadow-lg transition-all flex items-center gap-2 font-black text-[9px] uppercase">
               <Power className="w-4 h-4" /> <span className="hidden sm:inline">THOÁT</span>
             </button>
@@ -433,7 +439,12 @@ export default function App() {
              </div>
              <div>
                <h2 className="text-sm font-black text-white uppercase tracking-tight leading-none">{activeBot.name}</h2>
-               <p className="text-[7px] font-bold text-indigo-400 uppercase tracking-widest mt-1">{userRole === 'USER' ? `Lượt: ${remainingUses}/3` : 'VÔ HẠN VIP'}</p>
+               {activeBot.gemLink && (
+                 <a href={activeBot.gemLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[8px] text-indigo-400 hover:text-indigo-300 uppercase font-bold mt-1">
+                   <LinkIcon className="w-3 h-3" /> Link Bot Gốc
+                 </a>
+               )}
+               {!activeBot.gemLink && <p className="text-[7px] font-bold text-slate-500 uppercase tracking-widest mt-1">AI ASSISTANT</p>}
              </div>
            </div>
          </div>
@@ -512,9 +523,33 @@ export default function App() {
           <div className="glass-card rounded-[2.5rem] w-full max-w-2xl p-8 space-y-6 border-white/10 overflow-y-auto max-h-[90vh] shadow-3xl animate-in zoom-in">
              <div className="flex justify-between items-center border-b border-white/5 pb-4"><h2 className="text-xl font-black text-white uppercase italic">CẤU HÌNH BOT</h2><button onClick={() => setShowConfig(false)} className="p-2 text-slate-500 hover:text-white"><X className="w-6 h-6" /></button></div>
              <form className="space-y-6" onSubmit={saveBot}>
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><input name="name" defaultValue={editingBot?.name || ''} required placeholder="TÊN BOT..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white font-black uppercase text-xs outline-none focus:border-indigo-500/50" /><input name="description" defaultValue={editingBot?.description || ''} required placeholder="MÔ TẢ..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white text-xs outline-none focus:border-indigo-500/50" /></div>
-               <div className="space-y-2"><input name="imageUrl" value={formImageUrl} onChange={(e) => setFormImageUrl(e.target.value)} placeholder="LINK ẢNH MINH HỌA..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white text-[10px] outline-none focus:border-indigo-500/50" /></div>
-               <textarea name="systemInstruction" defaultValue={editingBot?.systemInstruction || ''} required rows={4} placeholder="KỊCH BẢN AI (System Instruction)..." className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-slate-300 text-xs resize-none outline-none focus:border-indigo-500/50" />
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest ml-2">Tên Bot</label>
+                    <input name="name" defaultValue={editingBot?.name || ''} required placeholder="VD: CHUYÊN GIA DƯỢC..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white font-black uppercase text-xs outline-none focus:border-indigo-500/50" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest ml-2">Mô tả ngắn</label>
+                    <input name="description" defaultValue={editingBot?.description || ''} required placeholder="Mô tả chức năng..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white text-xs outline-none focus:border-indigo-500/50" />
+                  </div>
+               </div>
+               
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                     <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><ImageIcon className="w-3 h-3"/> Link Ảnh (Tùy chọn)</label>
+                     <input name="imageUrl" value={formImageUrl} onChange={(e) => setFormImageUrl(e.target.value)} placeholder="https://..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white text-[10px] outline-none focus:border-indigo-500/50" />
+                  </div>
+                  <div className="space-y-1">
+                     <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><LinkIcon className="w-3 h-3"/> Link Bot Gemini</label>
+                     <input name="gemLink" defaultValue={editingBot?.gemLink || ''} placeholder="Link chia sẻ bot..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-emerald-400 text-[10px] outline-none focus:border-emerald-500/50" />
+                  </div>
+               </div>
+
+               <div className="space-y-1">
+                  <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><Terminal className="w-3 h-3"/> Dòng lệnh / Kịch bản (System Instruction)</label>
+                  <textarea name="systemInstruction" defaultValue={editingBot?.systemInstruction || ''} required rows={5} placeholder="Nhập lệnh điều khiển hành vi của Bot tại đây..." className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-slate-300 text-xs resize-none outline-none focus:border-indigo-500/50 font-mono" />
+               </div>
+
                <button type="submit" disabled={isSaving} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all shadow-xl">
                   {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-5 h-5" />} LƯU CẤU HÌNH
                </button>
