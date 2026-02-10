@@ -1,12 +1,13 @@
 
 import { GeminiBot } from "../types";
 
+// URL Web App của Google Apps Script (Cần update lại nếu bạn deploy script mới)
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwiHwYe7oQ6UU35nFfGL0fp1ghvTZV0f_akhy8NXo5SxzeisuJ8HnAJ0G1bYjyhw3icVw/exec'; 
+
+// URL để đọc dữ liệu Bot (vẫn giữ nguyên)
 const SHEET_ID = '1eEWtn9Sw8zMCbq_BXVkFPr48I9rf25nAElAmHA5b03M';
 const SHEET_NAME = 'BOT ALL';
-// Cập nhật URL để lấy dữ liệu thô mượt hơn
 const READ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
-
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyLFlygap5Kl1FgmUeJzLa9_bqovi3YUoPjgQGDDkmPebqL03zKFW6bh_S6Uv2irk3p3A/exec'; 
 
 export const fetchBotsFromGoogleSheet = async (): Promise<GeminiBot[]> => {
   try {
@@ -14,7 +15,6 @@ export const fetchBotsFromGoogleSheet = async (): Promise<GeminiBot[]> => {
     if (!response.ok) throw new Error("Không thể truy cập Google Sheet.");
     
     const text = await response.text();
-    // Phân tích JSON từ phản hồi gviz chuẩn xác hơn bằng Regex
     const jsonMatch = text.match(/google\.visualization\.Query\.setResponse\(([\s\S\w]+)\);/);
     if (!jsonMatch || !jsonMatch[1]) {
         throw new Error("Dữ liệu Sheet trả về không đúng định dạng.");
@@ -24,7 +24,6 @@ export const fetchBotsFromGoogleSheet = async (): Promise<GeminiBot[]> => {
     const rows = json.table.rows;
     if (!rows || rows.length <= 1) return []; // Bỏ qua header
 
-    // Bắt đầu từ hàng index 1 để bỏ qua tiêu đề cột
     return rows.slice(1).map((row: any, index: number) => {
       const cols = row.c;
       if (!cols || !cols[0]?.v) return null;
@@ -49,7 +48,6 @@ export const fetchBotsFromGoogleSheet = async (): Promise<GeminiBot[]> => {
     }).filter((bot: any) => bot !== null && bot.name && bot.systemInstruction);
   } catch (error) {
     console.error("Lỗi khi đồng bộ Google Sheet:", error);
-    // Trả về mảng rỗng để UI xử lý, không throw lỗi chặn app
     return [];
   }
 };
@@ -94,6 +92,112 @@ export const deleteBotFromSheet = async (botName: string): Promise<boolean> => {
     return false;
   }
 };
+
+// --- USER AUTHENTICATION FUNCTIONS ---
+
+export const registerUser = async (username: string, email: string, password: string): Promise<{success: boolean, message?: string}> => {
+  try {
+    const response = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // dùng text/plain để tránh preflight check
+      body: JSON.stringify({
+        action: 'register',
+        username,
+        email,
+        password
+      }),
+    });
+    const result = await response.json();
+    return { success: result.result === 'success', message: result.message };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+};
+
+export const loginUser = async (username: string, password: string): Promise<{success: boolean, message?: string, usage?: number}> => {
+  try {
+    const response = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'login',
+        username,
+        password
+      }),
+    });
+    const result = await response.json();
+    if (result.result === 'success') {
+        return { success: true, usage: result.usage };
+    }
+    return { success: false, message: result.message };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+};
+
+export const incrementUserUsage = async (username: string): Promise<boolean> => {
+   try {
+    await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors', // Fire and forget (để nhanh hơn)
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'increment_usage',
+        username
+      }),
+    });
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+// --- NEW ADMIN FUNCTIONS ---
+
+export interface UserData {
+    username: string;
+    email: string;
+    usage: number;
+}
+
+export const fetchAllUsers = async (): Promise<UserData[]> => {
+    try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+                action: 'get_users'
+            }),
+        });
+        const result = await response.json();
+        if (result.result === 'success') {
+            return result.users;
+        }
+        return [];
+    } catch (error) {
+        console.error("Lỗi lấy danh sách user", error);
+        return [];
+    }
+}
+
+export const updateUserUsageInSheet = async (username: string, newUsage: number): Promise<boolean> => {
+    try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+                action: 'update_user_usage',
+                username: username,
+                usage: newUsage
+            }),
+        });
+        const result = await response.json();
+        return result.result === 'success';
+    } catch (error) {
+        return false;
+    }
+}
+
 
 const getRandomColor = (index: number) => {
   const colors = [
