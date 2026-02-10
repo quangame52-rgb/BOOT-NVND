@@ -5,14 +5,18 @@ export const generateBotResponse = async (
   bot: GeminiBot,
   prompt: string,
   images: string[] = [], // Mảng các chuỗi base64
-  apiKey: string // Bắt buộc truyền API Key từ phía người dùng
+  userApiKey: string = '' // API Key từ phía người dùng (tùy chọn)
 ): Promise<{ text: string; sources?: any[] }> => {
   try {
+    // Ưu tiên key người dùng nhập, nếu không có thì dùng key hệ thống (Env var)
+    // Lưu ý: process.env.API_KEY đã được polyfill trong vite.config.ts
+    const apiKey = userApiKey || process.env.API_KEY;
+
     if (!apiKey) {
-      throw new Error("Chưa có API Key. Vui lòng đăng nhập/nhập Key.");
+      throw new Error("Chưa có API Key. Vui lòng nhập Key cá nhân hoặc liên hệ Admin cấu hình Key hệ thống.");
     }
 
-    // Initialize with the user provided key
+    // Initialize with the resolved key
     const ai = new GoogleGenAI({ apiKey });
     
     const parts: any[] = [{ text: prompt }];

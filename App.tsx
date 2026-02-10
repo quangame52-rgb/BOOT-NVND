@@ -4,7 +4,7 @@ import {
   X, Zap, Cpu, ArrowLeft, RotateCcw,
   CloudDownload, Save, CheckCircle2, Home, ArrowRight, Eye, AlertCircle,
   User, Crown, ShieldAlert, Power, Image as ImageIcon, Link as LinkIcon, Terminal,
-  MessageSquare, ExternalLink, Key, LogIn
+  MessageSquare, ExternalLink, Key, LogIn, Lock
 } from 'lucide-react';
 import { GeminiBot, HistoryItem, BotResponse } from './types';
 import { generateBotResponse } from './services/geminiService';
@@ -23,7 +23,16 @@ const DEFAULT_BOTS: GeminiBot[] = [
   }
 ];
 
-const ADMIN_PASSWORD = '791522Mm@123'; // Chỉ dùng để mở tính năng edit bot
+// Định nghĩa các Role
+type UserRole = 'GUEST' | 'TRIAL' | 'VIP' | 'ADMIN';
+
+const PASSWORDS = {
+  ADMIN: '791522Mm@123',
+  VIP: 'daugo',
+  TRIAL: 'nhomvianghindon'
+};
+
+const TRIAL_LIMIT = 3;
 
 const formatImageUrl = (url: string) => {
   if (!url) return '';
@@ -34,8 +43,6 @@ const formatImageUrl = (url: string) => {
   }
   return url;
 };
-
-type UserRole = 'GUEST' | 'ADMIN';
 
 export default function App() {
   const [bots, setBots] = useState<GeminiBot[]>(() => {
@@ -51,13 +58,16 @@ export default function App() {
     return DEFAULT_BOTS;
   });
   
-  const [activeBotId, setActiveBotId] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<UserRole>('GUEST');
+  // Auth State
+  const [userRole, setUserRole] = useState<UserRole>(() => (localStorage.getItem('gemini_user_role') as UserRole) || 'GUEST');
+  const [trialUsage, setTrialUsage] = useState<number>(() => parseInt(localStorage.getItem('gemini_trial_usage') || '0'));
   
-  // Thay thế passInput bằng apiKeyInput
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_user_api_key') || '');
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [showKeyModal, setShowKeyModal] = useState(!localStorage.getItem('gemini_user_api_key'));
+  const [activeBotId, setActiveBotId] = useState<string | null>(null);
+  
+  // Login State
+  const [loginInput, setLoginInput] = useState('');
+  const [apiKeyInput, setApiKeyInput] = useState(''); // Cho phép nhập key riêng nếu muốn
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   const [userInput, setUserInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
@@ -71,16 +81,20 @@ export default function App() {
   const [formImageUrl, setFormImageUrl] = useState('');
   const [syncError, setSyncError] = useState<string | null>(null);
   
-  // Admin logic
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [adminPassInput, setAdminPassInput] = useState('');
-
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     localStorage.setItem('gemini_hub_bots', JSON.stringify(bots));
   }, [bots]);
+
+  useEffect(() => {
+    localStorage.setItem('gemini_user_role', userRole);
+  }, [userRole]);
+
+  useEffect(() => {
+    localStorage.setItem('gemini_trial_usage', trialUsage.toString());
+  }, [trialUsage]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -91,43 +105,49 @@ export default function App() {
     else setFormImageUrl('');
   }, [editingBot, showConfig]);
 
-  // Auto sync on load if key exists
+  // Auto sync if logged in
   useEffect(() => {
-    if (apiKey) {
+    if (userRole !== 'GUEST') {
       handleSyncSheet();
     }
-  }, [apiKey]);
+  }, [userRole]);
 
   const activeBot = bots.find(b => b.id === activeBotId);
-  const isLocked = userRole !== 'ADMIN';
+  const isLocked = userRole !== 'ADMIN'; // Chỉ Admin mới được chỉnh sửa
 
-  const handleSaveApiKey = () => {
-    const key = apiKeyInput.trim();
-    if (!key) return;
-    localStorage.setItem('gemini_user_api_key', key);
-    setApiKey(key);
-    setShowKeyModal(false);
+  const handleLogin = () => {
+    const input = loginInput.trim();
+    if (input === PASSWORDS.ADMIN) {
+      setUserRole('ADMIN');
+      triggerSuccessToast();
+    } else if (input === PASSWORDS.VIP) {
+      setUserRole('VIP');
+      triggerSuccessToast();
+    } else if (input === PASSWORDS.TRIAL) {
+      setUserRole('TRIAL');
+      // Reset trial usage if user specifically logs in again? 
+      // No, keep usage persistent to enforce limit unless cleared manually.
+      triggerSuccessToast();
+    } else {
+      alert("Mật khẩu không đúng!");
+      return;
+    }
+    setLoginInput('');
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('gemini_user_api_key');
-    setApiKey('');
-    setApiKeyInput('');
-    setShowKeyModal(true);
+    setUserRole('GUEST');
     setActiveBotId(null);
     setHistory([]);
-    setUserRole('GUEST');
+    localStorage.removeItem('gemini_user_role');
+    // Không reset trial usage để tránh exploit logout/login
   };
 
-  const handleAdminLogin = () => {
-    if (adminPassInput === ADMIN_PASSWORD) {
-      setUserRole('ADMIN');
-      setShowAdminLogin(false);
-      setAdminPassInput('');
-      triggerSuccessToast();
-    } else {
-      alert("Mật khẩu Admin không đúng!");
-    }
+  const saveCustomApiKey = () => {
+    if (!apiKeyInput.trim()) return;
+    localStorage.setItem('gemini_custom_api_key', apiKeyInput.trim());
+    setShowApiKeyModal(false);
+    alert("Đã lưu API Key cá nhân!");
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,9 +169,13 @@ export default function App() {
 
   const handleRunCommand = async () => {
     if (!activeBot || (!userInput.trim() && selectedImages.length === 0) || isProcessing) return;
-    if (!apiKey) {
-      setShowKeyModal(true);
-      return;
+
+    // Check Trial Limit
+    if (userRole === 'TRIAL') {
+      if (trialUsage >= TRIAL_LIMIT) {
+        alert(`Gói dùng thử giới hạn ${TRIAL_LIMIT} lần. Vui lòng liên hệ Admin để nâng cấp gói VIP (Mật khẩu: daugo).`);
+        return;
+      }
     }
 
     setIsProcessing(true);
@@ -178,14 +202,22 @@ export default function App() {
     }, ...prev]);
 
     try {
-      // TRUYỀN API KEY CỦA NGƯỜI DÙNG VÀO SERVICE
-      const result = await generateBotResponse(activeBot, currentInput, currentImages, apiKey);
+      // Lấy custom key từ storage nếu có, service sẽ tự fallback về process.env.API_KEY nếu key này rỗng
+      const customKey = localStorage.getItem('gemini_custom_api_key') || '';
+      const result = await generateBotResponse(activeBot, currentInput, currentImages, customKey);
+      
       updateHistoryStatus(historyId, activeBot.id, result.text, 'success', result.sources);
+      
+      // Increment Trial Usage on Success
+      if (userRole === 'TRIAL') {
+        setTrialUsage(prev => prev + 1);
+      }
     } catch (err: any) {
       updateHistoryStatus(historyId, activeBot.id, `Lỗi: ${err.message}`, 'error');
       if (err.message.includes('API Key') || err.message.includes('403')) {
-        alert("API Key không hợp lệ hoặc hết hạn. Vui lòng kiểm tra lại.");
-        setShowKeyModal(true);
+        // Nếu lỗi Key và đang dùng VIP/Trial (tức là dùng System Key bị lỗi), gợi ý nhập key riêng
+        const confirmInput = confirm("Hệ thống chưa cấu hình API Key hoặc Key bị lỗi. Bạn có muốn nhập API Key cá nhân không?");
+        if (confirmInput) setShowApiKeyModal(true);
       }
     }
     setIsProcessing(false);
@@ -231,7 +263,10 @@ export default function App() {
 
   const saveBot = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (isLocked) return;
+    if (isLocked) {
+      alert("Bạn không có quyền chỉnh sửa Bot (Chỉ Admin).");
+      return;
+    }
     setIsSaving(true);
     const formData = new FormData(e.currentTarget);
     const rawName = (formData.get('name') as string || '').trim().toUpperCase();
@@ -299,8 +334,8 @@ export default function App() {
     }
   };
 
-  // Màn hình nhập API Key (Login)
-  if (showKeyModal) {
+  // Màn hình Đăng nhập (Thay thế API Key Modal cũ)
+  if (userRole === 'GUEST') {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-black/95 p-4 relative overflow-hidden">
         <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
@@ -309,30 +344,24 @@ export default function App() {
         </div>
         <div className="glass-card rounded-[3rem] p-8 md:p-12 w-full max-w-[500px] shadow-3xl space-y-8 text-center border-white/10 relative z-10 animate-in fade-in zoom-in">
           <div className="w-20 h-20 bg-gradient-to-tr from-indigo-600 to-purple-500 rounded-3xl flex items-center justify-center shadow-2xl mx-auto rotate-6">
-             <Key className="text-white w-10 h-10" />
+             <Lock className="text-white w-10 h-10" />
           </div>
           <div className="space-y-3">
-            <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter italic">API ACCESS</h2>
-            <p className="text-[9px] uppercase tracking-[0.4em] text-slate-500 font-bold">GEMINI KEY REQUIRED</p>
+            <h2 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter italic">ACCESS CONTROL</h2>
+            <p className="text-[9px] uppercase tracking-[0.4em] text-slate-500 font-bold">NHẬP MẬT KHẨU ĐỂ TIẾP TỤC</p>
           </div>
           <div className="space-y-4">
-             <div className="text-xs text-slate-400 font-medium">
-               Ứng dụng yêu cầu API Key của riêng bạn để hoạt động.<br/>
-               <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 underline font-bold mt-2 inline-block">
-                 Bấm vào đây để lấy Key miễn phí từ Google
-               </a>
-             </div>
              <input 
                type="password" 
-               value={apiKeyInput} 
-               onChange={(e) => setApiKeyInput(e.target.value)} 
-               placeholder="DÁN API KEY VÀO ĐÂY..." 
+               value={loginInput} 
+               onChange={(e) => setLoginInput(e.target.value)} 
+               placeholder="MẬT KHẨU..." 
                className="w-full bg-white/5 border border-white/10 rounded-2xl py-5 px-6 text-center text-sm focus:ring-4 focus:ring-indigo-500/20 outline-none text-white font-mono placeholder-slate-700 transition-all" 
                autoFocus 
-               onKeyDown={(e) => e.key === 'Enter' && handleSaveApiKey()} 
+               onKeyDown={(e) => e.key === 'Enter' && handleLogin()} 
              />
-            <button onClick={handleSaveApiKey} disabled={!apiKeyInput.trim()} className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl font-black uppercase text-sm tracking-[0.2em] shadow-xl transition-all active:scale-95">
-              KẾT NỐI
+            <button onClick={handleLogin} disabled={!loginInput.trim()} className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl font-black uppercase text-sm tracking-[0.2em] shadow-xl transition-all active:scale-95">
+              ĐĂNG NHẬP
             </button>
           </div>
         </div>
@@ -356,24 +385,22 @@ export default function App() {
              <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-xl"><Cpu className="text-white w-6 h-6" /></div>
              <div>
                <h1 className="text-xl font-black text-white tracking-tighter uppercase italic leading-none">AI HUB</h1>
-               <p className="text-[7px] uppercase tracking-[0.2em] text-indigo-400 font-bold mt-1">
-                 {userRole === 'ADMIN' ? 'ADMIN MODE' : 'USER MODE'}
-               </p>
+               <div className="flex items-center gap-2 mt-1">
+                 <p className="text-[7px] uppercase tracking-[0.2em] text-indigo-400 font-bold">
+                   {userRole === 'ADMIN' ? 'ADMINISTRATOR' : userRole === 'VIP' ? 'VIP MEMBER' : `TRIAL (${trialUsage}/${TRIAL_LIMIT})`}
+                 </p>
+               </div>
              </div>
           </div>
           <div className="flex items-center gap-3">
-            {userRole === 'GUEST' && (
-              <button onClick={() => setShowAdminLogin(true)} className="px-3 py-2 text-[9px] font-bold text-slate-500 hover:text-white uppercase tracking-widest transition-colors">
-                Admin Login
-              </button>
-            )}
-            
+            <button onClick={() => setShowApiKeyModal(true)} className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-400 shadow-lg transition-all" title="Cấu hình API Key cá nhân">
+              <Key className="w-5 h-5" />
+            </button>
             <button onClick={() => handleSyncSheet(true)} disabled={isSyncing} className="p-3 bg-emerald-600/10 border border-emerald-600/20 rounded-xl text-emerald-500 hover:bg-emerald-600/20 transition-all">
               <CloudDownload className={`w-5 h-5 ${isSyncing ? 'animate-bounce' : ''}`} />
             </button>
-            
-            <button onClick={handleLogout} className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-white shadow-lg transition-all flex items-center gap-2 font-black text-[9px] uppercase border border-white/5">
-              <Key className="w-4 h-4 text-amber-500" /> <span className="hidden sm:inline">ĐỔI KEY</span>
+            <button onClick={handleLogout} className="p-3 bg-rose-600/10 border border-rose-600/20 rounded-xl text-rose-500 hover:bg-rose-600 hover:text-white transition-all">
+              <LogOutIcon className="w-5 h-5" />
             </button>
           </div>
         </header>
@@ -433,6 +460,21 @@ export default function App() {
             </div>
           </div>
         </div>
+        
+        {/* Modal nhập API Key riêng */}
+        {showApiKeyModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/95 p-4 animate-in fade-in">
+             <div className="glass-card rounded-2xl p-6 w-full max-w-sm space-y-4 border-indigo-500/20 shadow-indigo-900/20">
+               <h3 className="text-lg font-black text-indigo-500 uppercase flex items-center gap-2"><Key className="w-5 h-5"/> API Key Cá Nhân</h3>
+               <p className="text-xs text-slate-400">Nếu hệ thống chưa cấu hình Key, bạn có thể nhập Key riêng của mình để sử dụng.</p>
+               <input type="password" value={apiKeyInput} onChange={(e) => setApiKeyInput(e.target.value)} placeholder="Nhập Google AI Key..." className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-indigo-500/50" />
+               <div className="flex gap-2">
+                 <button onClick={() => setShowApiKeyModal(false)} className="flex-1 py-3 bg-slate-800 rounded-xl text-xs font-bold uppercase text-slate-400">Đóng</button>
+                 <button onClick={saveCustomApiKey} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-bold uppercase text-white shadow-lg">Lưu Key</button>
+               </div>
+             </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -464,7 +506,14 @@ export default function App() {
              </div>
            </div>
          </div>
-         <button onClick={handleLogout} className="p-3 bg-rose-600/10 border border-rose-600/20 rounded-xl text-rose-500 hover:bg-rose-600 hover:text-white transition-all"><Power className="w-4 h-4" /></button>
+         <div className="flex gap-2">
+            {userRole === 'TRIAL' && (
+              <div className="px-3 py-2 bg-slate-800 rounded-xl text-xs font-bold text-slate-400 border border-white/5">
+                {trialUsage}/{TRIAL_LIMIT}
+              </div>
+            )}
+            <button onClick={handleLogout} className="p-3 bg-rose-600/10 border border-rose-600/20 rounded-xl text-rose-500 hover:bg-rose-600 hover:text-white transition-all"><Power className="w-4 h-4" /></button>
+         </div>
       </header>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 space-y-6 pb-28 z-10">
@@ -534,19 +583,6 @@ export default function App() {
         </div>
       </div>
 
-      {showAdminLogin && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/95 p-4 animate-in fade-in">
-          <div className="glass-card rounded-2xl p-6 w-full max-w-sm space-y-4 border-red-500/20 shadow-red-900/20">
-            <h3 className="text-lg font-black text-red-500 uppercase flex items-center gap-2"><ShieldAlert className="w-5 h-5"/> Admin Access</h3>
-            <input type="password" value={adminPassInput} onChange={(e) => setAdminPassInput(e.target.value)} placeholder="Nhập mật mã quản trị..." className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-red-500/50" autoFocus />
-            <div className="flex gap-2">
-              <button onClick={() => setShowAdminLogin(false)} className="flex-1 py-3 bg-slate-800 rounded-xl text-xs font-bold uppercase text-slate-400">Hủy</button>
-              <button onClick={handleAdminLogin} className="flex-1 py-3 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-bold uppercase text-white shadow-lg">Xác nhận</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showConfig && userRole === 'ADMIN' && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 backdrop-blur-2xl p-4">
           <div className="glass-card rounded-[2.5rem] w-full max-w-2xl p-8 space-y-6 border-white/10 overflow-y-auto max-h-[90vh] shadow-3xl animate-in zoom-in">
@@ -615,4 +651,26 @@ export default function App() {
       )}
     </div>
   );
+}
+
+// Icon helper
+function LogOutIcon(props: any) {
+    return (
+        <svg
+            {...props}
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" x2="9" y1="12" y2="12" />
+        </svg>
+    )
 }
