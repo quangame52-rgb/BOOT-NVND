@@ -41,7 +41,8 @@ export const fetchBotsFromGoogleSheet = async (): Promise<GeminiBot[]> => {
         gemLink: gemLink,
         imageUrl: imageUrl.startsWith('http') ? imageUrl : '',
         description: cols[2]?.v?.toString().substring(0, 100) || 'Dữ liệu từ hệ thống đám mây',
-        model: 'gemini-3-pro-preview',
+        // QUAN TRỌNG: Đã đổi từ gemini-3-pro-preview sang gemini-2.5-flash để tránh lỗi 429 Quota Exceeded
+        model: 'gemini-2.5-flash',
         color: getRandomColor(index),
         isActive: true
       };

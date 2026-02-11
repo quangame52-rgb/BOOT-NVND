@@ -172,6 +172,8 @@ export default function App() {
       setCurrentUser({ username: usernameInput, usage: res.usage || 0 });
       // Clear API Key mode if active
       setApiKey(''); localStorage.removeItem('gemini_user_api_key');
+      // CRITICAL FIX: Ensure Admin mode is OFF
+      setIsAdmin(false);
     } else {
       setAuthError(res.message || "Lỗi đăng nhập.");
     }
@@ -184,6 +186,8 @@ export default function App() {
     setApiKey(key);
     // Clear User mode if active
     setCurrentUser(null);
+    // CRITICAL FIX: Ensure Admin mode is OFF when using API Key
+    setIsAdmin(false);
   };
 
   const handleLogout = () => {
@@ -825,9 +829,9 @@ export default function App() {
                   <div className="space-y-1">
                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-2">Model</label>
                     <select name="model" defaultValue={editingBot?.model || 'gemini-2.5-flash'} className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white text-sm outline-none focus:border-indigo-500/50 appearance-none">
-                      <option value="gemini-2.5-flash">Gemini 2.5 Flash (Nhanh)</option>
-                      <option value="gemini-2.5-flash-lite-latest">Gemini 2.5 Flash Lite (Nhẹ)</option>
-                      <option value="gemini-3-pro-preview">Gemini 2.0 Pro (Thông minh)</option>
+                      <option value="gemini-2.5-flash">Gemini 2.5 Flash (Nhanh - Khuyên dùng)</option>
+                      <option value="gemini-2.5-flash-lite-latest">Gemini 2.5 Flash Lite (Tiết kiệm)</option>
+                      <option value="gemini-3-pro-preview">Gemini 2.0 Pro (Thông minh - Dễ hết lượt)</option>
                     </select>
                   </div>
                </div>
