@@ -1,19 +1,24 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { GeminiBot } from "../types";
 
+// KEY HỆ THỐNG MẶC ĐỊNH (Hardcoded theo yêu cầu)
+const SYSTEM_API_KEY = "AIzaSyDNjJsScJCwqX97nmlLExgMbexx7T79cYg";
+
 export const generateBotResponse = async (
   bot: GeminiBot,
   prompt: string,
-  images: string[] = [], // Mảng các chuỗi base64
-  userApiKey?: string // Key từ người dùng nhập (Optional)
+  images: string[] = [], 
+  userPersonalApiKey?: string // Key riêng được Admin gán cho User
 ): Promise<{ text: string; sources?: any[] }> => {
   try {
-    // Ưu tiên Key người dùng nhập.
-    // Nếu không có, fallback về Key hệ thống (process.env.API_KEY) dành cho tài khoản Trial.
-    const apiKey = userApiKey || process.env.API_KEY;
+    // Thứ tự ưu tiên: 
+    // 1. Key riêng của User (do Admin cấp)
+    // 2. Key hệ thống mặc định
+    // 3. Fallback sang biến môi trường (nếu có)
+    const apiKey = userPersonalApiKey || SYSTEM_API_KEY || process.env.API_KEY;
 
     if (!apiKey) {
-      throw new Error("Chưa cấu hình API Key hệ thống và người dùng chưa nhập Key riêng.");
+      throw new Error("Hệ thống chưa có API Key khả dụng.");
     }
 
     // Initialize with the resolved key

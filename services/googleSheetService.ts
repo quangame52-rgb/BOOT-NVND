@@ -115,7 +115,7 @@ export const registerUser = async (username: string, email: string, password: st
   }
 };
 
-export const loginUser = async (username: string, password: string): Promise<{success: boolean, message?: string, usage?: number}> => {
+export const loginUser = async (username: string, password: string): Promise<{success: boolean, message?: string, usage?: number, apiKey?: string}> => {
   try {
     const response = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
@@ -128,7 +128,8 @@ export const loginUser = async (username: string, password: string): Promise<{su
     });
     const result = await response.json();
     if (result.result === 'success') {
-        return { success: true, usage: result.usage };
+        // Lưu ý: Backend GAS cần trả về field apiKey nếu có
+        return { success: true, usage: result.usage, apiKey: result.apiKey || '' };
     }
     return { success: false, message: result.message };
   } catch (error: any) {
@@ -159,6 +160,7 @@ export interface UserData {
     username: string;
     email: string;
     usage: number;
+    apiKey?: string; // Field mới để chứa Key riêng
 }
 
 export const fetchAllUsers = async (): Promise<UserData[]> => {
@@ -199,6 +201,23 @@ export const updateUserUsageInSheet = async (username: string, newUsage: number)
     }
 }
 
+export const updateUserKeyInSheet = async (username: string, apiKey: string): Promise<boolean> => {
+    try {
+        const response = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+                action: 'update_user_key', // Backend GAS cần handle action này
+                username: username,
+                apiKey: apiKey
+            }),
+        });
+        const result = await response.json();
+        return result.result === 'success';
+    } catch (error) {
+        return false;
+    }
+}
 
 const getRandomColor = (index: number) => {
   const colors = [
