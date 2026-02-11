@@ -5,7 +5,7 @@ import {
   CloudDownload, Save, CheckCircle2, Home, ArrowRight, Eye, AlertCircle,
   User, Crown, ShieldAlert, Power, Image as ImageIcon, Link as LinkIcon, Terminal,
   MessageSquare, ExternalLink, Key, LogIn, Lock, Globe, UserPlus, FileKey, Mail, MessageCircle,
-  Users, Edit3, AlertTriangle, Phone
+  Users, Edit3, AlertTriangle, Phone, Check
 } from 'lucide-react';
 import { GeminiBot, HistoryItem, BotResponse } from './types';
 import { generateBotResponse } from './services/geminiService';
@@ -38,8 +38,8 @@ const formatImageUrl = (url: string) => {
   return url;
 };
 
-// Định nghĩa Auth Mode
-type AuthMode = 'LOGIN' | 'REGISTER' | 'API_KEY';
+// Định nghĩa Auth Mode - Chỉ còn Login và Register
+type AuthMode = 'LOGIN' | 'REGISTER';
 
 export default function App() {
   const [bots, setBots] = useState<GeminiBot[]>(() => {
@@ -56,14 +56,10 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
   
-  // 2. Direct API Key State
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_user_api_key') || '');
-  
   // Login/Register Form Inputs
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
-  const [emailInput, setEmailInput] = useState(''); // Thêm state cho Email
-  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [emailInput, setEmailInput] = useState(''); 
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
 
@@ -111,10 +107,10 @@ export default function App() {
     else localStorage.removeItem('gemini_current_user');
   }, [currentUser]);
 
-  // Sync Sheet on Login (User or Key)
+  // Sync Sheet on Login (User)
   useEffect(() => {
-    if (currentUser || apiKey) handleSyncSheet();
-  }, [currentUser, apiKey]);
+    if (currentUser) handleSyncSheet();
+  }, [currentUser]);
   
   // Load Users when User Panel opens
   useEffect(() => {
@@ -170,30 +166,14 @@ export default function App() {
     setAuthLoading(false);
     if (res.success) {
       setCurrentUser({ username: usernameInput, usage: res.usage || 0 });
-      // Clear API Key mode if active
-      setApiKey(''); localStorage.removeItem('gemini_user_api_key');
-      // CRITICAL FIX: Ensure Admin mode is OFF
       setIsAdmin(false);
     } else {
       setAuthError(res.message || "Lỗi đăng nhập.");
     }
   };
 
-  const handleSaveApiKey = () => {
-    const key = apiKeyInput.trim();
-    if (!key) return;
-    localStorage.setItem('gemini_user_api_key', key);
-    setApiKey(key);
-    // Clear User mode if active
-    setCurrentUser(null);
-    // CRITICAL FIX: Ensure Admin mode is OFF when using API Key
-    setIsAdmin(false);
-  };
-
   const handleLogout = () => {
     setCurrentUser(null);
-    setApiKey('');
-    localStorage.removeItem('gemini_user_api_key');
     localStorage.removeItem('gemini_current_user');
     setIsAdmin(false);
     setActiveBotId(null);
@@ -247,10 +227,12 @@ export default function App() {
   const handleRunCommand = async () => {
     if (!activeBot || (!userInput.trim() && selectedImages.length === 0) || isProcessing) return;
 
-    // RULE: User Check Limit
-    if (currentUser && !apiKey && !isAdmin) {
-      if (currentUser.usage >= TRIAL_LIMIT) {
-        setShowLimitModal(true); // Show custom modal instead of alert
+    // RULE: Strict Limit Check
+    // Chỉ Admin mới được dùng không giới hạn.
+    // User luôn bị kiểm tra giới hạn.
+    if (!isAdmin) {
+      if (currentUser && currentUser.usage >= TRIAL_LIMIT) {
+        setShowLimitModal(true); 
         return;
       }
     }
@@ -267,13 +249,13 @@ export default function App() {
     setHistory(prev => [{ id: historyId, userInput: currentInput, images: currentImages, responses: [initialResponse], timestamp: Date.now() }, ...prev]);
 
     try {
-      // Logic: Nếu có Key riêng -> Dùng Key đó. Nếu không -> Dùng Key hệ thống (Service sẽ tự fallback)
-      const result = await generateBotResponse(activeBot, currentInput, currentImages, apiKey);
+      // Gọi service (không truyền Key cá nhân nữa vì đã bỏ tính năng này)
+      const result = await generateBotResponse(activeBot, currentInput, currentImages);
       
       updateHistoryStatus(historyId, activeBot.id, result.text, 'success', result.sources);
 
-      // Increment usage for Account Mode
-      if (currentUser && !apiKey) {
+      // Increment usage for User (Admin doesn't increment)
+      if (currentUser && !isAdmin) {
         const newUsage = currentUser.usage + 1;
         setCurrentUser({ ...currentUser, usage: newUsage });
         incrementUserUsage(currentUser.username); // Async background update
@@ -360,9 +342,9 @@ export default function App() {
     }
   };
 
-  // --- VIEW: LOGIN / REGISTER / API KEY ---
-  // Allow access if logged in as user OR has API key OR is Admin
-  const isLoggedIn = !!currentUser || !!apiKey || isAdmin;
+  // --- VIEW: LOGIN / REGISTER ---
+  // Allow access only if logged in OR is Admin
+  const isLoggedIn = !!currentUser || isAdmin;
 
   if (!isLoggedIn) {
     return (
@@ -384,7 +366,7 @@ export default function App() {
         <div className="glass-card rounded-[2.5rem] p-8 md:p-10 w-full max-w-[450px] shadow-3xl space-y-6 text-center border-white/10 relative z-10 animate-in fade-in zoom-in">
           <div className="flex justify-center mb-4">
             <div className="w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-500 rounded-2xl flex items-center justify-center shadow-2xl rotate-3">
-               {authMode === 'API_KEY' ? <Key className="text-white w-8 h-8"/> : <User className="text-white w-8 h-8"/>}
+               <User className="text-white w-8 h-8"/>
             </div>
           </div>
           
@@ -392,7 +374,6 @@ export default function App() {
             <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic">
               {authMode === 'LOGIN' && 'ĐĂNG NHẬP'}
               {authMode === 'REGISTER' && 'ĐĂNG KÝ'}
-              {authMode === 'API_KEY' && 'SỬ DỤNG KEY'}
             </h2>
             <p className="text-xs uppercase tracking-[0.2em] text-slate-500 font-bold">GEMINI AI HUB</p>
             <a href={ZALO_GROUP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 font-bold uppercase tracking-wider transition-colors mt-2 bg-blue-500/10 px-3 py-1.5 rounded-full border border-blue-500/20">
@@ -404,7 +385,6 @@ export default function App() {
           <div className="flex p-1 bg-white/5 rounded-xl">
              <button onClick={() => switchAuthMode('LOGIN')} className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase transition-all ${authMode === 'LOGIN' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Đăng nhập</button>
              <button onClick={() => switchAuthMode('REGISTER')} className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase transition-all ${authMode === 'REGISTER' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Đăng ký</button>
-             <button onClick={() => switchAuthMode('API_KEY')} className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase transition-all ${authMode === 'API_KEY' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>API Key</button>
           </div>
 
           {/* Forms */}
@@ -445,22 +425,6 @@ export default function App() {
                     TẠO TÀI KHOẢN
                   </button>
                   <p className="text-[10px] text-slate-500">* Tài khoản mới được miễn phí 3 lần chat.</p>
-                </>
-             )}
-
-             {authMode === 'API_KEY' && (
-                <>
-                  <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-3 text-left flex items-center gap-3">
-                     <div className="p-2 bg-indigo-600 rounded-lg text-white"><Globe className="w-4 h-4" /></div>
-                     <div className="flex-1">
-                       <p className="text-[10px] text-slate-400">Không giới hạn sử dụng với Key riêng.</p>
-                       <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-xs font-bold text-indigo-400 hover:text-white uppercase">Lấy Key tại Google AI Studio</a>
-                     </div>
-                  </div>
-                  <input type="password" value={apiKeyInput} onChange={(e) => setApiKeyInput(e.target.value)} placeholder="Dán API Key vào đây..." className="w-full bg-black/40 border border-white/10 rounded-xl py-4 px-5 text-sm focus:border-indigo-500 outline-none text-white font-mono text-center transition-all" />
-                  <button onClick={handleSaveApiKey} disabled={!apiKeyInput.trim()} className="w-full py-4 bg-white text-black hover:bg-slate-200 rounded-xl font-black uppercase text-xs tracking-widest shadow-xl transition-all active:scale-95">
-                    KẾT NỐI
-                  </button>
                 </>
              )}
           </div>
@@ -504,17 +468,13 @@ export default function App() {
              <div>
                <h1 className="text-xl font-black text-white tracking-tighter uppercase italic leading-none">AI HUB</h1>
                <div className="flex items-center gap-2 mt-1">
-                 {currentUser ? (
+                 {isAdmin ? (
+                     <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-red-500/20 text-red-400 flex items-center gap-1">
+                        <ShieldAlert className="w-3 h-3" /> ADMINISTRATOR (UNLIMITED)
+                     </span>
+                 ) : currentUser && (
                    <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded ${currentUser.usage >= TRIAL_LIMIT ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                       USER: {currentUser.username} (Còn lại: {Math.max(0, TRIAL_LIMIT - currentUser.usage)} lượt)
-                   </span>
-                 ) : isAdmin ? (
-                     <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-red-500/20 text-red-400 flex items-center gap-1">
-                        <ShieldAlert className="w-3 h-3" /> ADMINISTRATOR
-                     </span>
-                 ) : (
-                   <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 flex items-center gap-1">
-                      <Key className="w-3 h-3" /> API KEY MODE
                    </span>
                  )}
                </div>
@@ -712,9 +672,14 @@ export default function App() {
                <h2 className="text-sm font-black text-white uppercase tracking-tight leading-none">{activeBot?.name}</h2>
                <div className="flex gap-2">
                   <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-1">AI ASSISTANT</p>
-                  {currentUser && !apiKey && (
+                  {currentUser && !isAdmin && (
                     <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest mt-1">
                       (Còn lại: {Math.max(0, TRIAL_LIMIT - currentUser.usage)} lượt)
+                    </span>
+                  )}
+                  {isAdmin && (
+                    <span className="text-[8px] font-bold text-red-500 uppercase tracking-widest mt-1">
+                      (ADMIN ACCESS)
                     </span>
                   )}
                </div>
@@ -803,13 +768,15 @@ export default function App() {
                  <div>
                     <h3 className="text-lg font-black text-amber-500 uppercase">HẾT LƯỢT SỬ DỤNG</h3>
                     <p className="text-sm text-slate-300 mt-2">Bạn đã sử dụng hết <strong className="text-white">{TRIAL_LIMIT}</strong> lượt miễn phí.</p>
-                    <p className="text-xs text-slate-400 mt-1">Vui lòng liên hệ Admin để mở thêm lượt sử dụng hoặc sử dụng API Key riêng.</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                        Vui lòng liên hệ Admin để mua thêm lượt sử dụng.
+                    </p>
                  </div>
                  
                  <div className="flex gap-2 pt-2">
                      <button onClick={() => setShowLimitModal(false)} className="flex-1 py-3 bg-slate-800 rounded-xl text-xs font-bold uppercase text-slate-400 hover:bg-slate-700">Đóng</button>
                      <a href={ZALO_GROUP_URL} target="_blank" rel="noopener noreferrer" className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold uppercase text-white shadow-lg flex items-center justify-center gap-2">
-                         <MessageCircle className="w-4 h-4" /> Liên hệ
+                         <MessageCircle className="w-4 h-4" /> Liên hệ Admin
                      </a>
                  </div>
              </div>
