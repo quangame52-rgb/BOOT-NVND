@@ -697,6 +697,209 @@ export default function App() {
             </div>
            </div>
         )}
+        
+        {/* CONFIG BOT MODAL FOR ADMIN */}
+        {showConfig && isAdmin && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 backdrop-blur-2xl p-4">
+          <div className="glass-card rounded-[2.5rem] w-full max-w-2xl p-8 space-y-6 border-white/10 overflow-y-auto max-h-[90vh] shadow-3xl animate-in zoom-in">
+             <div className="flex justify-between items-center border-b border-white/5 pb-4"><h2 className="text-xl font-black text-white uppercase italic">CẤU HÌNH BOT</h2><button onClick={() => setShowConfig(false)} className="p-2 text-slate-500 hover:text-white"><X className="w-6 h-6" /></button></div>
+             <form className="space-y-6" onSubmit={saveBot}>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-2">Tên Bot</label>
+                    <input name="name" defaultValue={editingBot?.name || ''} required placeholder="VD: CHUYÊN GIA DƯỢC..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white font-black uppercase text-sm outline-none focus:border-indigo-500/50" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-2">Model</label>
+                    <select name="model" defaultValue={editingBot?.model || 'gemini-2.5-flash'} className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white text-sm outline-none focus:border-indigo-500/50 appearance-none">
+                      <option value="gemini-2.5-flash">Gemini 2.5 Flash (Nhanh - Khuyên dùng)</option>
+                      <option value="gemini-2.5-flash-lite-latest">Gemini 2.5 Flash Lite (Tiết kiệm)</option>
+                      <option value="gemini-3-pro-preview">Gemini 2.0 Pro (Thông minh - Dễ hết lượt)</option>
+                    </select>
+                  </div>
+               </div>
+               
+               <div className="space-y-1">
+                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-2">Mô tả ngắn</label>
+                  <input name="description" defaultValue={editingBot?.description || ''} required placeholder="Mô tả chức năng..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white text-sm outline-none focus:border-indigo-500/50" />
+               </div>
+               
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><ImageIcon className="w-3 h-3"/> Link Ảnh (Tùy chọn)</label>
+                     <input name="imageUrl" value={formImageUrl} onChange={(e) => setFormImageUrl(e.target.value)} placeholder="https://..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-white text-xs outline-none focus:border-indigo-500/50" />
+                  </div>
+                  <div className="space-y-1">
+                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><LinkIcon className="w-3 h-3"/> Link Bot Gemini</label>
+                     <input name="gemLink" defaultValue={editingBot?.gemLink || ''} placeholder="https://gemini.google.com/..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-emerald-400 text-xs outline-none focus:border-emerald-500/50" />
+                  </div>
+               </div>
+
+               <div className="space-y-1">
+                  <label className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><Terminal className="w-3 h-3"/> Dòng lệnh hệ thống (System Instruction)</label>
+                  <div className="relative">
+                    <textarea 
+                      name="systemInstruction" 
+                      defaultValue={editingBot?.systemInstruction || ''} 
+                      required 
+                      rows={8} 
+                      placeholder="> Nhập kịch bản hoạt động của bot..." 
+                      className="w-full bg-[#0f172a] border border-white/10 rounded-2xl p-5 text-emerald-400 text-sm resize-none outline-none focus:border-indigo-500/50 font-mono shadow-inner leading-relaxed" 
+                      spellCheck={false}
+                    />
+                    <div className="absolute bottom-3 right-4 pointer-events-none opacity-50">
+                        <span className="text-[10px] text-slate-500 font-mono">CMD MODE</span>
+                    </div>
+                  </div>
+               </div>
+
+               <div className="space-y-1">
+                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-2 flex items-center gap-1"><MessageSquare className="w-3 h-3"/> Gợi ý cho người dùng (User Prompt)</label>
+                  <input name="userInstructions" defaultValue={editingBot?.userInstructions || ''} placeholder="VD: Hỏi về công dụng..." className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-slate-300 text-xs outline-none focus:border-indigo-500/50" />
+               </div>
+
+               <button type="submit" disabled={isSaving} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all shadow-xl">
+                  {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-5 h-5" />} LƯU CẤU HÌNH
+               </button>
+             </form>
+          </div>
+        </div>
+      )}
       </div>
     );
   }
+
+  // --- VIEW: CHAT INTERFACE ---
+  // This part was missing or cut off in the previous version
+  return (
+    <div className="h-screen w-full relative bg-[#020617] flex flex-col overflow-hidden">
+      {activeBot?.imageUrl && (
+        <div className="absolute inset-0 z-0 overflow-hidden opacity-5 pointer-events-none">
+           <img src={formatImageUrl(activeBot.imageUrl)} className="w-full h-full object-cover blur-3xl scale-125" alt="" />
+        </div>
+      )}
+
+      <header className="px-4 md:px-8 py-3 flex items-center justify-between backdrop-blur-3xl border-b border-white/5 bg-black/40 z-50 shrink-0">
+         <div className="flex items-center gap-4">
+           <button onClick={() => setActiveBotId(null)} className="p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-all group"><ArrowLeft className="w-5 h-5 text-slate-400 group-hover:text-white" /></button>
+           <div className="flex items-center gap-3">
+             <div className={`w-10 h-10 rounded-xl ${activeBot?.color} flex items-center justify-center shadow-2xl border border-white/20 overflow-hidden`}>
+               {activeBot?.imageUrl ? <img src={formatImageUrl(activeBot.imageUrl)} onError={handleImageError} className="w-full h-full object-cover" /> : <Bot className="w-5 h-5 text-white" />}
+             </div>
+             <div>
+               <h2 className="text-sm font-black text-white uppercase tracking-tight leading-none">{activeBot?.name}</h2>
+               <div className="flex gap-2">
+                  <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-1">AI ASSISTANT</p>
+                  {currentUser && !isAdmin && (
+                    <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest mt-1">
+                      (Còn lại: {Math.max(0, TRIAL_LIMIT - currentUser.usage)} lượt)
+                    </span>
+                  )}
+                  {isAdmin && (
+                    <span className="text-[8px] font-bold text-red-500 uppercase tracking-widest mt-1">
+                      (ADMIN ACCESS)
+                    </span>
+                  )}
+               </div>
+             </div>
+           </div>
+         </div>
+         <div className="flex gap-2">
+            <button onClick={handleLogout} className="p-3 bg-rose-600/10 border border-rose-600/20 rounded-xl text-rose-500 hover:bg-rose-600 hover:text-white transition-all"><Power className="w-4 h-4" /></button>
+         </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 space-y-6 pb-28 z-10">
+        {history.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto space-y-4 opacity-80">
+            <div className={`w-16 h-16 rounded-2xl ${activeBot?.color} flex items-center justify-center shadow-3xl border-2 border-white/10 animate-pulse`}>
+                 {activeBot?.imageUrl ? <img src={formatImageUrl(activeBot.imageUrl)} className="w-full h-full object-cover rounded-2xl" /> : <Bot className="w-8 h-8 text-white" />}
+            </div>
+            <div className="space-y-3">
+              <h3 className="text-lg font-black text-white uppercase italic">SẴN SÀNG HỖ TRỢ</h3>
+              <p className="text-slate-300 text-sm italic leading-relaxed border border-white/5 p-4 rounded-xl bg-white/5">"{activeBot?.userInstructions || 'Nhập câu hỏi để bắt đầu.'}"</p>
+            </div>
+          </div>
+        ) : (
+          history.map((item) => (
+            <div key={item.id} className="animate-in fade-in slide-in-from-bottom-2 duration-300 w-full space-y-4">
+              <div className="flex flex-col items-end gap-2">
+                 <div className="bg-indigo-600 px-4 py-3 rounded-2xl rounded-tr-none max-w-[85%] shadow-lg">
+                    <p className="text-white text-sm font-medium leading-relaxed">{item.userInput}</p>
+                 </div>
+                 {item.images && item.images.length > 0 && (
+                   <div className="flex flex-wrap gap-1.5 justify-end">
+                     {item.images.map((img, i) => (
+                       <img key={i} src={img} className="w-14 h-14 object-cover rounded-lg border border-white/10 shadow-sm" alt="input" />
+                     ))}
+                   </div>
+                 )}
+              </div>
+              {item.responses.map(resp => (
+                <div key={resp.botId} className="flex gap-2.5 items-start">
+                  <div className={`w-8 h-8 rounded-lg ${activeBot?.color} flex items-center justify-center shrink-0 border border-white/20 overflow-hidden shadow-md mt-1`}>
+                    {activeBot?.imageUrl ? <img src={formatImageUrl(activeBot.imageUrl)} className="w-full h-full object-cover" /> : <Bot className="w-4 h-4 text-white" />}
+                  </div>
+                  <div className="bg-slate-900/90 border border-white/5 px-5 py-4 rounded-2xl rounded-tl-none max-w-[92%] shadow-md backdrop-blur-xl">
+                    {resp.status === 'loading' ? ( <div className="flex gap-1 py-1.5"><div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:-.3s]"></div></div> ) : (
+                      <div className="text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">{resp.content}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+        <div ref={chatEndRef} />
+      </div>
+
+      <div className="absolute bottom-4 left-0 right-0 px-4 md:px-8 z-50 shrink-0">
+        <div className="max-w-4xl mx-auto space-y-2">
+          {selectedImages.length > 0 && (
+            <div className="flex flex-wrap gap-2 p-2 bg-slate-900/90 rounded-2xl border border-white/10 backdrop-blur-xl shadow-2xl">
+              {selectedImages.map((img, i) => (
+                <div key={i} className="relative w-12 h-12">
+                  <img src={img} className="w-full h-full object-cover rounded-lg" alt="" />
+                  <button onClick={() => removeSelectedImage(i)} className="absolute -top-1.5 -right-1.5 bg-red-600 rounded-full p-0.5 text-white shadow-lg"><X className="w-3.5 h-3.5" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="glass-card rounded-2xl p-2.5 flex items-end gap-2.5 shadow-2xl border-white/10 bg-slate-900/95">
+             <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all shrink-0"><ImageIcon className="w-5.5 h-5.5" /></button>
+             <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleRunCommand())} placeholder={`Nhập lệnh cho ${activeBot?.name}...`} className="flex-1 bg-transparent border-none focus:ring-0 py-2 px-3 text-white placeholder-slate-700 resize-none h-[45px] custom-scrollbar text-base font-bold" />
+             <button onClick={handleRunCommand} disabled={isProcessing || (!userInput.trim() && selectedImages.length === 0)} className={`p-3 rounded-xl transition-all shadow-lg ${isProcessing || (!userInput.trim() && selectedImages.length === 0) ? 'bg-white/5 text-slate-800' : 'bg-indigo-600 text-white hover:scale-105 active:scale-95 shadow-indigo-600/20'}`}>
+               {isProcessing ? <RefreshCw className="w-5.5 h-5.5 animate-spin" /> : <Send className="w-5.5 h-5.5" />}
+             </button>
+          </div>
+        </div>
+      </div>
+      
+      {/* LIMIT REACHED MODAL */}
+      {showLimitModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4 animate-in fade-in">
+             <div className="glass-card rounded-2xl p-6 w-full max-w-sm text-center space-y-4 border-amber-500/20 shadow-amber-900/20">
+                 <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-2">
+                     <AlertTriangle className="w-8 h-8 text-amber-500" />
+                 </div>
+                 <div>
+                    <h3 className="text-lg font-black text-amber-500 uppercase">HẾT LƯỢT SỬ DỤNG</h3>
+                    <p className="text-sm text-slate-300 mt-2">Bạn đã sử dụng hết <strong className="text-white">{TRIAL_LIMIT}</strong> lượt miễn phí.</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                        Vui lòng liên hệ Admin để mua thêm lượt sử dụng.
+                    </p>
+                 </div>
+                 
+                 <div className="flex gap-2 pt-2">
+                     <button onClick={() => setShowLimitModal(false)} className="flex-1 py-3 bg-slate-800 rounded-xl text-xs font-bold uppercase text-slate-400 hover:bg-slate-700">Đóng</button>
+                     <a href={ZALO_GROUP_URL} target="_blank" rel="noopener noreferrer" className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold uppercase text-white shadow-lg flex items-center justify-center gap-2">
+                         <MessageCircle className="w-4 h-4" /> Liên hệ Admin
+                     </a>
+                 </div>
+             </div>
+        </div>
+      )}
+    </div>
+  );
+}
