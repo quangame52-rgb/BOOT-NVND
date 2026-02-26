@@ -2,7 +2,7 @@
 import { GeminiBot } from "../types";
 
 // URL Web App của Google Apps Script (Cần update lại nếu bạn deploy script mới)
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwiHwYe7oQ6UU35nFfGL0fp1ghvTZV0f_akhy8NXo5SxzeisuJ8HnAJ0G1bYjyhw3icVw/exec'; 
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzmh3PrOJwDt35x1RwztJTNi0h52wooB6CXX5JAF0xO4wNMg5RC2nvKzyA1LHuwNjKhKQ/exec'; 
 
 // URL để đọc dữ liệu Bot (vẫn giữ nguyên)
 const SHEET_ID = '1eEWtn9Sw8zMCbq_BXVkFPr48I9rf25nAElAmHA5b03M';
@@ -115,6 +115,26 @@ export const registerUser = async (username: string, email: string, password: st
   }
 };
 
+export const submitPaymentInfo = async (name: string, email: string, phone: string, orderCode: string): Promise<{success: boolean, message?: string}> => {
+  try {
+    const response = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'submit_payment',
+        name,
+        email,
+        phone,
+        orderCode
+      }),
+    });
+    const result = await response.json();
+    return { success: result.result === 'success', message: result.message };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+};
+
 export const loginUser = async (username: string, password: string): Promise<{success: boolean, message?: string, usage?: number, apiKey?: string}> => {
   try {
     const response = await fetch(APPS_SCRIPT_URL, {
@@ -218,6 +238,27 @@ export const updateUserKeyInSheet = async (username: string, apiKey: string): Pr
         return false;
     }
 }
+
+export const checkPaymentStatus = async (orderCode: string): Promise<string> => {
+  try {
+    const response = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'check_payment_status',
+        orderCode
+      }),
+    });
+    const result = await response.json();
+    if (result.result === 'success') {
+      return result.status; // 'PENDING_PAYMENT' or 'PAID'
+    }
+    return 'PENDING_PAYMENT';
+  } catch (error) {
+    console.error("Lỗi kiểm tra trạng thái thanh toán:", error);
+    return 'PENDING_PAYMENT';
+  }
+};
 
 const getRandomColor = (index: number) => {
   const colors = [

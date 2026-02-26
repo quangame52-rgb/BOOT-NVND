@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { GeminiBot, HistoryItem, BotResponse } from './types';
 import { generateBotResponse } from './services/geminiService';
-import { fetchBotsFromGoogleSheet, appendBotToSheet, deleteBotFromSheet, loginUser, registerUser, incrementUserUsage, fetchAllUsers, updateUserUsageInSheet, updateUserKeyInSheet, UserData } from './services/googleSheetService';
+import { fetchBotsFromGoogleSheet, appendBotToSheet, deleteBotFromSheet, loginUser, registerUser, submitPaymentInfo, incrementUserUsage, fetchAllUsers, updateUserUsageInSheet, updateUserKeyInSheet, checkPaymentStatus, UserData } from './services/googleSheetService';
 
 const ADMIN_PASSWORD = '791522Mm@123';
 const TRIAL_LIMIT = 3;
@@ -67,6 +67,7 @@ export default function App() {
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [emailInput, setEmailInput] = useState(''); 
+  const [phoneInput, setPhoneInput] = useState(''); // New state for phone
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
 
@@ -97,6 +98,13 @@ export default function App() {
   
   // Modal State
   const [showLimitModal, setShowLimitModal] = useState(false);
+  const [paymentCode, setPaymentCode] = useState('');
+  const [showPaymentQR, setShowPaymentQR] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState({ name: '', email: '', phone: '' });
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [showManualConfirm, setShowManualConfirm] = useState(false);
+  const [manualSuccess, setManualSuccess] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,6 +135,43 @@ export default function App() {
       }
   }, [showUserPanel, isAdmin]);
 
+  // Payment Status Checking Loop
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    let timeoutId: NodeJS.Timeout;
+
+    if (showPaymentQR && !paymentSuccess && !manualSuccess) {
+      setIsCheckingPayment(true);
+      
+      // Check every 3 seconds
+      intervalId = setInterval(async () => {
+        const status = await checkPaymentStatus(paymentCode);
+        if (status === 'PAID') {
+          if (currentUser) {
+             await updateUserUsageInSheet(currentUser.username, -9999);
+             setCurrentUser(prev => prev ? ({...prev, usage: -9999}) : null);
+          }
+          setPaymentSuccess(true);
+          setIsCheckingPayment(false);
+          clearInterval(intervalId);
+          clearTimeout(timeoutId);
+        }
+      }, 3000);
+
+      // Show manual confirm button after 60 seconds
+      timeoutId = setTimeout(() => {
+        setShowManualConfirm(true);
+      }, 60000);
+    } else {
+      setIsCheckingPayment(false);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [showPaymentQR, paymentCode, paymentSuccess, manualSuccess, currentUser]);
+
   // Helper: Reset inputs when switching modes
   const switchAuthMode = (mode: AuthMode) => {
     setAuthMode(mode);
@@ -134,6 +179,7 @@ export default function App() {
     setUsernameInput('');
     setPasswordInput('');
     setEmailInput('');
+    setPhoneInput('');
   };
 
   // Helper: Email Validation Regex
@@ -224,6 +270,24 @@ export default function App() {
       else alert("Lỗi khi cập nhật lượt dùng!");
   };
 
+  const handleToggleUnlimited = async (index: number) => {
+      const user = userList[index];
+      const isUnlimited = user.usage <= -900;
+      const newUsage = isUnlimited ? 0 : -999;
+      
+      const newList = [...userList];
+      newList[index].usage = newUsage;
+      setUserList(newList);
+      
+      const success = await updateUserUsageInSheet(user.username, newUsage);
+      if (success) triggerSuccessToast();
+      else {
+          alert("Lỗi cập nhật!");
+          newList[index].usage = user.usage; // Revert on fail
+          setUserList(newList);
+      }
+  };
+
   const handleSaveUserKey = async (user: UserData) => {
       if (!user.apiKey) return;
       // Gọi service cập nhật key (Yêu cầu Backend GAS phải support action 'update_user_key')
@@ -263,6 +327,10 @@ export default function App() {
     // User luôn bị kiểm tra giới hạn.
     if (!isAdmin) {
       if (currentUser && currentUser.usage >= TRIAL_LIMIT) {
+        const code = `HUB${Math.floor(100000 + Math.random() * 900000)}`;
+        setPaymentCode(code);
+        setShowPaymentQR(false); // Reset to form view
+        setPaymentInfo({ name: currentUser?.username || '', email: '', phone: '' }); // Pre-fill username if available
         setShowLimitModal(true); 
         return;
       }
@@ -379,7 +447,7 @@ export default function App() {
 
   if (!isLoggedIn) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-black/95 p-4 relative overflow-hidden">
+      <div className="h-screen w-full flex items-center justify-center bg-transparent p-4 relative overflow-hidden">
         {/* Nút Admin Login ở góc */}
         <button 
           onClick={() => setShowAdminLogin(true)} 
@@ -482,10 +550,152 @@ export default function App() {
   // --- MAIN APP UI ---
   const activeBot = bots.find(b => b.id === activeBotId);
 
+  const LimitModal = showLimitModal && (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4 animate-in fade-in">
+         <div className="glass-card rounded-[2rem] p-8 w-full max-w-4xl text-center space-y-6 border-amber-500/20 shadow-amber-900/20 relative overflow-hidden">
+             <button onClick={() => setShowLimitModal(false)} className="absolute top-4 right-4 p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors"><X className="w-5 h-5"/></button>
+             
+             <div className="w-20 h-20 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                 <Crown className="w-10 h-10 text-amber-500" />
+             </div>
+             
+             <div className="space-y-2">
+                <h3 className="text-3xl font-black text-white uppercase tracking-tighter">
+                    {currentUser && currentUser.usage >= TRIAL_LIMIT ? "HẾT LƯỢT MIỄN PHÍ" : "NÂNG CẤP TÀI KHOẢN"}
+                </h3>
+                <p className="text-slate-400 text-sm max-w-md mx-auto">
+                    {currentUser && currentUser.usage >= TRIAL_LIMIT 
+                        ? <span>Bạn đã sử dụng hết <strong className="text-white">{TRIAL_LIMIT}</strong> lượt trải nghiệm. Để tiếp tục sử dụng không giới hạn, vui lòng nâng cấp tài khoản.</span>
+                        : <span>Nâng cấp lên tài khoản Vĩnh Viễn để sử dụng không giới hạn tính năng và ưu tiên hỗ trợ.</span>
+                    }
+                </p>
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8 text-left">
+                {/* Option 1: Contact Admin */}
+                <div className="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-indigo-500/50 transition-all group">
+                    <div className="w-12 h-12 bg-indigo-600/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <MessageCircle className="w-6 h-6 text-indigo-400" />
+                    </div>
+                    <h4 className="text-lg font-bold text-white uppercase mb-2">Liên hệ Admin</h4>
+                    <p className="text-xs text-slate-400 mb-6 h-10">Trao đổi trực tiếp với quản trị viên để được hỗ trợ hoặc mua gói tùy chỉnh.</p>
+                    <a href={ZALO_GROUP_URL} target="_blank" rel="noopener noreferrer" className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-bold uppercase text-white shadow-lg flex items-center justify-center gap-2 transition-all">
+                        <MessageCircle className="w-4 h-4" /> Chat Zalo Ngay
+                    </a>
+                </div>
+
+                {/* Option 2: Buy Forever */}
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-500/10 to-orange-600/10 border border-amber-500/20 hover:border-amber-500/50 transition-all relative overflow-hidden group flex flex-col h-full">
+                    <div className="absolute top-0 right-0 bg-amber-500 text-black text-[10px] font-black uppercase px-3 py-1 rounded-bl-xl">Best Value</div>
+                    <div className="w-12 h-12 bg-amber-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <Zap className="w-6 h-6 text-amber-500" />
+                    </div>
+                    <h4 className="text-lg font-bold text-white uppercase mb-1">MUA VĨNH VIỄN</h4>
+                    <div className="text-2xl font-black text-white mb-4">2.000đ <span className="text-xs font-normal text-slate-400 line-through">5.000đ</span></div>
+                    
+                    {!showPaymentQR ? (
+                        <div className="space-y-3 flex-1 flex flex-col">
+                            <p className="text-xs text-slate-400 mb-2">Điền thông tin để lấy mã QR thanh toán:</p>
+                            <input 
+                                value={paymentInfo.name} 
+                                onChange={e => setPaymentInfo({...paymentInfo, name: e.target.value})}
+                                placeholder="Họ và tên..." 
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-amber-500 outline-none text-white" 
+                            />
+                            <input 
+                                value={paymentInfo.email} 
+                                onChange={e => setPaymentInfo({...paymentInfo, email: e.target.value})}
+                                placeholder="Email nhận thông tin..." 
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-amber-500 outline-none text-white" 
+                            />
+                            <input 
+                                value={paymentInfo.phone} 
+                                onChange={e => setPaymentInfo({...paymentInfo, phone: e.target.value})}
+                                placeholder="Số điện thoại..." 
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-amber-500 outline-none text-white" 
+                            />
+                            <div className="flex-1"></div>
+                            <button 
+                                onClick={async () => {
+                                    if(paymentInfo.name && paymentInfo.email && paymentInfo.phone) {
+                                        // Save to Google Sheet using submitPaymentInfo
+                                        try {
+                                            await submitPaymentInfo(paymentInfo.name, paymentInfo.email, paymentInfo.phone, paymentCode);
+                                        } catch (e) {
+                                            console.error("Error saving payment info:", e);
+                                        }
+                                        setShowPaymentQR(true);
+                                        setIsCheckingPayment(true);
+                                    }
+                                    else alert("Vui lòng điền đầy đủ thông tin!");
+                                }}
+                                className="w-full py-3 bg-amber-600 hover:bg-amber-500 rounded-xl text-xs font-bold uppercase text-white shadow-lg flex items-center justify-center gap-2 transition-all mt-2"
+                            >
+                                Tiếp tục <ArrowRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ) : paymentSuccess ? (
+                        <div className="animate-in fade-in slide-in-from-right duration-300 flex flex-col h-full items-center justify-center text-center space-y-4">
+                            <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center animate-bounce">
+                                <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+                            </div>
+                            <h4 className="text-xl font-black text-white uppercase">THANH TOÁN THÀNH CÔNG!</h4>
+                            <p className="text-slate-400 text-xs">Cảm ơn bạn đã ủng hộ. Vui lòng tham gia nhóm Zalo để nhận quyền lợi.</p>
+                            <a href={ZALO_GROUP_URL} target="_blank" rel="noopener noreferrer" className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-bold uppercase text-white shadow-lg flex items-center justify-center gap-2 transition-all animate-pulse">
+                                <MessageCircle className="w-4 h-4" /> VÀO NHÓM ZALO NGAY
+                            </a>
+                        </div>
+                    ) : manualSuccess ? (
+                        <div className="animate-in fade-in slide-in-from-right duration-300 flex flex-col h-full items-center justify-center text-center space-y-4">
+                            <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center">
+                                <AlertCircle className="w-10 h-10 text-blue-500" />
+                            </div>
+                            <h4 className="text-xl font-black text-white uppercase">ĐÃ GHI NHẬN YÊU CẦU</h4>
+                            <p className="text-slate-400 text-xs">Vui lòng tham gia nhóm Zalo và gửi ảnh chụp màn hình chuyển khoản để Admin duyệt nhanh.</p>
+                            <a href={ZALO_GROUP_URL} target="_blank" rel="noopener noreferrer" className="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold uppercase text-white shadow-lg flex items-center justify-center gap-2 transition-all">
+                                <MessageCircle className="w-4 h-4" /> VÀO NHÓM ZALO ĐỂ ADMIN DUYỆT
+                            </a>
+                        </div>
+                    ) : (
+                        <div className="animate-in fade-in slide-in-from-right duration-300">
+                            <div className="bg-white p-3 rounded-xl mb-4 mx-auto w-fit shadow-2xl relative">
+                                <img src={`https://qr.sepay.vn/img?acc=962476LINQ&bank=BIDV&amount=2000&des=${paymentCode}&template=compact`} className="w-48 h-48 object-contain" alt="QR Code" />
+                                {isCheckingPayment && (
+                                    <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px] rounded-xl flex items-center justify-center">
+                                        <div className="bg-black/80 text-white text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-2 animate-pulse">
+                                            <RefreshCw className="w-3 h-3 animate-spin" /> Đang kiểm tra...
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="text-center space-y-2">
+                                <p className="text-[10px] text-slate-400 uppercase font-bold">Nội dung chuyển khoản:</p>
+                                <div className="bg-black/40 py-3 px-4 rounded-xl border border-white/10 flex items-center justify-between gap-2">
+                                    <code className="text-amber-400 font-mono font-bold text-lg tracking-wider">{paymentCode}</code>
+                                    <button onClick={() => {navigator.clipboard.writeText(paymentCode); alert("Đã copy mã!");}} className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors"><CheckCircle2 className="w-5 h-5"/></button>
+                                </div>
+                                
+                                {showManualConfirm ? (
+                                    <button onClick={() => setManualSuccess(true)} className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-bold uppercase text-white transition-all mt-2 animate-in fade-in slide-in-from-bottom-2">
+                                        Tôi đã chuyển khoản
+                                    </button>
+                                ) : (
+                                    <button onClick={() => setShowPaymentQR(false)} className="text-[10px] text-slate-500 hover:text-white underline mt-2">Quay lại nhập thông tin</button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+             </div>
+         </div>
+    </div>
+  );
+
   // Home Screen (Bot Selection)
   if (!activeBotId) {
     return (
-      <div className="h-screen w-full flex flex-col p-4 md:p-8 overflow-hidden bg-[#020617] relative z-10">
+      <div className="h-screen w-full flex flex-col p-4 md:p-8 overflow-hidden bg-slate-950/80 relative z-10">
         {showSuccessToast && (
           <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] bg-emerald-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-2 animate-in slide-in-from-top-4 duration-300">
             <CheckCircle2 className="w-5 h-5" />
@@ -504,8 +714,8 @@ export default function App() {
                         <ShieldAlert className="w-3 h-3" /> ADMINISTRATOR (UNLIMITED)
                      </span>
                  ) : currentUser && (
-                   <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded ${currentUser.usage >= TRIAL_LIMIT ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                      USER: {currentUser.username} (Còn lại: {Math.max(0, TRIAL_LIMIT - currentUser.usage)} lượt)
+                   <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded ${currentUser.usage >= TRIAL_LIMIT && currentUser.usage > -900 ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                      USER: {currentUser.username} {currentUser.usage <= -900 ? '(UNLIMITED)' : `(Còn lại: ${Math.max(0, TRIAL_LIMIT - currentUser.usage)} lượt)`}
                    </span>
                  )}
                </div>
@@ -518,9 +728,21 @@ export default function App() {
              </a>
 
              {!isAdmin && (
-                <button onClick={() => setShowAdminLogin(true)} className="px-3 py-2 text-[10px] font-bold text-slate-500 hover:text-white uppercase tracking-widest transition-colors flex items-center gap-1">
-                  <ShieldAlert className="w-3 h-3" /> Admin
-                </button>
+                <>
+                 <button onClick={() => {
+                     const code = `HUB${Math.floor(100000 + Math.random() * 900000)}`;
+                     setPaymentCode(code);
+                     setShowPaymentQR(false);
+                     setPaymentInfo({ name: currentUser?.username || '', email: '', phone: '' });
+                     setShowLimitModal(true);
+                 }} className="px-3 py-2 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl text-white font-bold text-[10px] uppercase tracking-widest shadow-lg hover:shadow-orange-500/20 transition-all flex items-center gap-1 animate-pulse">
+                    <Zap className="w-3 h-3" /> <span className="hidden sm:inline">Mua Vĩnh Viễn</span>
+                 </button>
+
+                 <button onClick={() => setShowAdminLogin(true)} className="px-3 py-2 text-[10px] font-bold text-slate-500 hover:text-white uppercase tracking-widest transition-colors flex items-center gap-1">
+                   <ShieldAlert className="w-3 h-3" /> Admin
+                 </button>
+                </>
              )}
              
              {isAdmin && (
@@ -595,6 +817,8 @@ export default function App() {
           </div>
         </div>
 
+        {LimitModal}
+
         {/* ADMIN LOGIN MODAL */}
         {showAdminLogin && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/95 p-4 animate-in fade-in">
@@ -648,17 +872,23 @@ export default function App() {
                                        </td>
                                        <td className="p-4">
                                            <div className="flex items-center gap-2">
-                                               <input 
-                                                  type="number" 
-                                                  value={TRIAL_LIMIT - user.usage} 
-                                                  onChange={(e) => {
-                                                      const remaining = parseInt(e.target.value) || 0;
-                                                      const newUsage = TRIAL_LIMIT - remaining;
-                                                      handleUsageChange(index, newUsage);
-                                                  }}
-                                                  className="w-16 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-center text-emerald-400 font-mono text-xs focus:border-indigo-500 outline-none"
-                                               />
-                                               <span className="text-[10px] text-slate-500">lượt</span>
+                                               {user.usage <= -900 ? (
+                                                   <span className="text-emerald-400 font-bold text-xs">UNLIMITED (Used: {user.usage + 999})</span>
+                                               ) : (
+                                                   <>
+                                                       <input 
+                                                          type="number" 
+                                                          value={TRIAL_LIMIT - user.usage} 
+                                                          onChange={(e) => {
+                                                              const remaining = parseInt(e.target.value) || 0;
+                                                              const newUsage = TRIAL_LIMIT - remaining;
+                                                              handleUsageChange(index, newUsage);
+                                                          }}
+                                                          className="w-16 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-center text-emerald-400 font-mono text-xs focus:border-indigo-500 outline-none"
+                                                       />
+                                                       <span className="text-[10px] text-slate-500">lượt</span>
+                                                   </>
+                                               )}
                                            </div>
                                        </td>
                                        <td className="p-4">
@@ -680,7 +910,10 @@ export default function App() {
                                                </button>
                                            </div>
                                        </td>
-                                       <td className="p-4 text-right">
+                                       <td className="p-4 text-right flex items-center justify-end gap-2">
+                                           <button onClick={() => handleToggleUnlimited(index)} className={`px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-lg transition-all active:scale-95 ${user.usage <= -900 ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                                               {user.usage <= -900 ? 'Hủy V.Viễn' : 'Kích hoạt V.Viễn'}
+                                           </button>
                                            <button onClick={() => handleSaveUserUsage(user)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-lg transition-all active:scale-95">
                                                Lưu Lượt
                                            </button>
@@ -772,7 +1005,7 @@ export default function App() {
   // --- VIEW: CHAT INTERFACE ---
   // This part was missing or cut off in the previous version
   return (
-    <div className="h-screen w-full relative bg-[#020617] flex flex-col overflow-hidden">
+    <div className="h-screen w-full relative bg-slate-950/80 flex flex-col overflow-hidden">
       {activeBot?.imageUrl && (
         <div className="absolute inset-0 z-0 overflow-hidden opacity-5 pointer-events-none">
            <img src={formatImageUrl(activeBot.imageUrl)} className="w-full h-full object-cover blur-3xl scale-125" alt="" />
@@ -792,7 +1025,7 @@ export default function App() {
                   <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-1">AI ASSISTANT</p>
                   {currentUser && !isAdmin && (
                     <span className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest mt-1">
-                      (Còn lại: {Math.max(0, TRIAL_LIMIT - currentUser.usage)} lượt)
+                      {currentUser.usage <= -900 ? '(UNLIMITED)' : `(Còn lại: ${Math.max(0, TRIAL_LIMIT - currentUser.usage)} lượt)`}
                     </span>
                   )}
                   {isAdmin && (
@@ -805,6 +1038,17 @@ export default function App() {
            </div>
          </div>
          <div className="flex gap-2">
+            {!isAdmin && (
+                <button onClick={() => {
+                    const code = `HUB${Math.floor(100000 + Math.random() * 900000)}`;
+                    setPaymentCode(code);
+                    setShowPaymentQR(false);
+                    setPaymentInfo({ name: currentUser?.username || '', email: '', phone: '' });
+                    setShowLimitModal(true);
+                }} className="p-3 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl text-white shadow-lg hover:shadow-orange-500/20 transition-all" title="Mua Vĩnh Viễn">
+                   <Zap className="w-4 h-4" />
+                </button>
+            )}
             <button onClick={handleLogout} className="p-3 bg-rose-600/10 border border-rose-600/20 rounded-xl text-rose-500 hover:bg-rose-600 hover:text-white transition-all"><Power className="w-4 h-4" /></button>
          </div>
       </header>
@@ -877,29 +1121,7 @@ export default function App() {
       </div>
       
       {/* LIMIT REACHED MODAL */}
-      {showLimitModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4 animate-in fade-in">
-             <div className="glass-card rounded-2xl p-6 w-full max-w-sm text-center space-y-4 border-amber-500/20 shadow-amber-900/20">
-                 <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-2">
-                     <AlertTriangle className="w-8 h-8 text-amber-500" />
-                 </div>
-                 <div>
-                    <h3 className="text-lg font-black text-amber-500 uppercase">HẾT LƯỢT SỬ DỤNG</h3>
-                    <p className="text-sm text-slate-300 mt-2">Bạn đã sử dụng hết <strong className="text-white">{TRIAL_LIMIT}</strong> lượt miễn phí.</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                        Vui lòng liên hệ Admin để mua thêm lượt sử dụng.
-                    </p>
-                 </div>
-                 
-                 <div className="flex gap-2 pt-2">
-                     <button onClick={() => setShowLimitModal(false)} className="flex-1 py-3 bg-slate-800 rounded-xl text-xs font-bold uppercase text-slate-400 hover:bg-slate-700">Đóng</button>
-                     <a href={ZALO_GROUP_URL} target="_blank" rel="noopener noreferrer" className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold uppercase text-white shadow-lg flex items-center justify-center gap-2">
-                         <MessageCircle className="w-4 h-4" /> Liên hệ Admin
-                     </a>
-                 </div>
-             </div>
-        </div>
-      )}
+      {LimitModal}
     </div>
   );
 }
