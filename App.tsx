@@ -591,7 +591,7 @@ export default function App() {
                         <Zap className="w-6 h-6 text-amber-500" />
                     </div>
                     <h4 className="text-lg font-bold text-white uppercase mb-1">MUA VĨNH VIỄN</h4>
-                    <div className="text-2xl font-black text-white mb-4">2.000đ <span className="text-xs font-normal text-slate-400 line-through">5.000đ</span></div>
+                    <div className="text-2xl font-black text-white mb-4">1.000.000đ <span className="text-xs font-normal text-slate-400 line-through">2.500.000đ</span></div>
                     
                     {!showPaymentQR ? (
                         <div className="space-y-3 flex-1 flex flex-col">
@@ -659,10 +659,10 @@ export default function App() {
                     ) : (
                         <div className="animate-in fade-in slide-in-from-right duration-300">
                             <div className="bg-white p-3 rounded-xl mb-4 mx-auto w-fit shadow-2xl relative">
-                                <img src={`https://qr.sepay.vn/img?acc=962476LINQ&bank=BIDV&amount=2000&des=${paymentCode}&template=compact`} className="w-48 h-48 object-contain" alt="QR Code" />
+                                <img src={`https://qr.sepay.vn/img?acc=962476LINQ&bank=BIDV&amount=1000000&des=${paymentCode}&template=compact`} className="w-48 h-48 object-contain" alt="QR Code" />
                                 {isCheckingPayment && (
-                                    <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px] rounded-xl flex items-center justify-center">
-                                        <div className="bg-black/80 text-white text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-2 animate-pulse">
+                                    <div className="absolute top-2 right-2">
+                                        <div className="bg-black/80 text-white text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-2 animate-pulse shadow-lg border border-white/20">
                                             <RefreshCw className="w-3 h-3 animate-spin" /> Đang kiểm tra...
                                         </div>
                                     </div>
